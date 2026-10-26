@@ -68,7 +68,7 @@ def test_score_in_range_and_breakdown(models):
 def test_api_flow(client):
     assert len(client.get("/api/zones").json()["features"]) == 10
     p = client.get("/api/predictions", params={"zone": "Z01"}).json()
-    assert len(p["rows"]) == 24 and p["data_label"] == "synthetic"
+    assert len(p["rows"]) == 24 and "synthetic crowd" in p["data_label"]
     r = client.post("/api/scenarios", json={"name": "FC divert", "levers": {"diversion_pct": 20}}).json()
     assert client.get(f"/api/scenarios/{r['scenario_id']}").status_code == 200
     d = client.get("/api/zones/Z04", params={"h": 15}).json()
@@ -83,3 +83,20 @@ def test_advisor_cites_and_refuses(client):
     assert "don't have data" in client.post("/api/advisor/query", json={"question": "what is the GDP?"}).json()["answer"]
     top3 = client.post("/api/advisor/query", json={"question": "top 3 actions"}).json()
     assert len(top3["citations"]) == 3
+
+
+def test_raw_files_match_logged_checksums():  # FR-8.1
+    import hashlib, json
+    from festivalpulse.ingest import RAW
+    log = json.loads((RAW / "sources.json").read_text())
+    assert len(log) == 8
+    for e in log:
+        assert hashlib.sha256((RAW / e["path"]).read_bytes()).hexdigest() == e["sha256"]
+
+
+def test_real_inputs_used_and_fallback_when_missing(monkeypatch, tmp_path):  # NFR-5
+    from festivalpulse import data, ingest
+    assert data.scenario_day()["real"]
+    monkeypatch.setattr(ingest, "RAW", tmp_path)  # no raw files -> synthetic fallback, labelled
+    day = data.scenario_day()
+    assert not day["real"] and "synthetic" in day["label"] and len(day["rain"]) == 24

@@ -1,5 +1,6 @@
 """FastAPI layer (REQ §16). Run: uvicorn festivalpulse.main:app --reload (from backend/)."""
 import csv
+import json
 import io
 import time
 import uuid
@@ -12,7 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 
 from . import advisor, engine
-from .data import DATA_LABEL, generate
+from .data import DATA_LABEL, DATASETS, generate, scenario_day
+from .ingest import RAW
 from .models import train
 from .zones import ZONE_BY_ID, geojson
 
@@ -25,13 +27,16 @@ SCENARIOS = {}  # shortcut: in-memory, lost on restart; move to the scenarios ta
 
 
 def _run(levers=None):
-    df, zs, lv = engine.simulate(STATE["crowd"], STATE["aqi"], levers)
+    df, zs, lv = engine.simulate(STATE["crowd"], STATE["aqi"], levers, STATE["day"])
     return {"df": df, "zs": zs, "levers": lv, "score": engine.sustainability(df, zs), "plan": engine.action_plan(df, zs)}
 
 
 @asynccontextmanager
 async def lifespan(_app):
-    STATE["crowd"], STATE["aqi"], STATE["metrics"] = train(generate())
+    data = generate()
+    STATE["crowd"], STATE["aqi"], STATE["metrics"] = train(data)
+    STATE["day"] = scenario_day()
+    STATE["weather_real_share"] = round(float(data["weather_real"].mean()), 3)
     STATE["trained_at"] = time.time()
     SCENARIOS["baseline"] = {"name": "Baseline", **_run()}
     yield
@@ -159,16 +164,31 @@ def action_plan(scenario: str = "baseline", format: str = "json"):
 
 @app.get("/api/health")
 def health():
+    # NFR-5: anything below 1.0 means some days fell back to synthetic weather; the UI shows a badge
     return {"status": "ok" if STATE else "starting", "data_label": DATA_LABEL,
+            "scenario_weather": STATE["day"]["label"] if STATE else None,
+            "weather_real_share": STATE.get("weather_real_share"),
             "models_trained_at": STATE.get("trained_at"), "metrics": STATE.get("metrics")}
+
+
+def _source_log():
+    try:
+        return json.loads((RAW / "sources.json").read_text())
+    except (OSError, ValueError):
+        return []
 
 
 @app.get("/api/methodology")
 def methodology():
-    return {"data_label": DATA_LABEL, "metrics": STATE["metrics"], "assumptions": engine.ASSUMPTIONS,
+    return {"data_label": DATA_LABEL, "datasets": DATASETS, "scenario_weather": STATE["day"]["label"],
+            "raw_sources": _source_log(), "metrics": STATE["metrics"], "assumptions": engine.ASSUMPTIONS,
             "risk_weights": engine.RISK_WEIGHTS, "score_weights": engine.SCORE_WEIGHTS,
-            "limitations": ["All training data is synthetic; no observed festival data is used yet.",
+            "limitations": ["Crowd labels are synthetic; no observed footfall data is used yet.",
+                            "City AQI is a modelled CAMS grid value (24h-averaged US AQI), not a station reading; "
+                            "zone-to-zone AQI differences are synthetic.",
                             "Zone boundaries are approximate hexagons around hand-picked centroids.",
                             "Traffic, waste, sanitation and sales are rule-based with assumed coefficients.",
                             "Associations only; no causal claims.", "Advisory only; not an official rating."],
-            "sources": ["OpenStreetMap tiles (ODbL), attribution required"]}
+            "sources": ["OpenStreetMap tiles (ODbL), attribution required",
+                        "Weather data by Open-Meteo.com (CC BY 4.0), ERA5 reanalysis",
+                        "Air quality data by Open-Meteo.com (CC BY 4.0), CAMS"]}

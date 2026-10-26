@@ -42,7 +42,8 @@
 <body>
 <header>
   <h1>FestivalPulse</h1><span class="sub">Ganesh Visarjan, Pune · impact digital twin</span>
-  <span class="badge" title="All models are trained on synthetic data">SYNTHETIC DATA</span>
+  <span class="badge" id="dataBadge" title="See the Method tab for each dataset's label">SYNTHETIC CROWD · REAL WEATHER &amp; CITY AQI</span>
+  <span class="badge" id="staleBadge" hidden>STALE: some weather is synthetic fallback</span>
   <span class="sub" style="margin-left:auto">Scenario: <select id="scenario"><option value="baseline">Baseline</option></select></span>
 </header>
 <main>
@@ -112,7 +113,7 @@ const api = async (p, opt) => { const r = await fetch(p, opt); if (!r.ok) throw 
 const hourLabel = h => String((6 + +h) % 24).padStart(2, "0") + ":00";
 // viridis steps: colour-blind safe; values are also printed on the map so colour is never the only cue
 const COLORS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
-const SCALE = { risk:[0,.8], crowd_idx:[0,1], congestion_prob:[0,1], aqi_pred:[50,300], waste_kg:[0,1500], sanitation_risk:[0,1] };
+const SCALE = { risk:[0,.8], crowd_idx:[0,1], congestion_prob:[0,1], aqi_pred:[0,150], waste_kg:[0,1500], sanitation_risk:[0,1] };
 let zones, rows = {}, selected = null, markers = [];
 
 const map = new maplibregl.Map({ container: "map", center: [73.86, 18.515], zoom: 12.2,
@@ -203,7 +204,12 @@ $("#ask").onclick = async () => {
 async function loadMethod() {
   const m = await api("/api/methodology");
   const mt = Object.entries(m.metrics).map(([k, v]) => `<tr><td>${k}</td><td>${v.mae}</td><td>${v.baseline_mae}</td><td>${v.improvement_pct}%</td><td>${v.interval_coverage_80}</td></tr>`).join("");
-  $("#methodOut").innerHTML = `<h2>Methodology & limitations</h2><p class="badge">Data: ${m.data_label}</p>
+  const h = await api("/api/health");
+  $("#staleBadge").hidden = h.weather_real_share === 1;
+  $("#methodOut").innerHTML = `<h2>Methodology & limitations</h2><p class="badge">Data: ${esc(m.data_label)}</p>
+    <h3>Datasets</h3><table>${Object.entries(m.datasets).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")}
+    <tr><td>scenario day</td><td>${esc(m.scenario_weather)}</td></tr></table>
+    <h3>Raw files (FR-8.1)</h3><table>${m.raw_sources.map(s => `<tr><td>${esc(s.path)}</td><td class="muted">${esc(s.fetched_at)}<br>sha256 ${esc(s.sha256.slice(0, 12))}…</td></tr>`).join("")}</table>
     <h3>Model evaluation (holdout = most recent festival)</h3><table><tr><th>Model</th><th>MAE</th><th>Naive MAE</th><th>Gain</th><th>80% cover</th></tr>${mt}</table>
     <h3>Risk weights</h3><p>${Object.entries(m.risk_weights).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>
     <h3>Assumed effects</h3><table>${Object.entries(m.assumptions).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")}</table>

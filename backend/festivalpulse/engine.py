@@ -6,7 +6,7 @@ REQ §10.2, §10.4, §10.6, §10.7, §11, §12. Every rule-based coefficient her
 import numpy as np
 import pandas as pd
 
-from .data import clock_hour, features, lookup_history, weather
+from .data import clock_hour, features, lookup_history, scenario_day
 from .zones import ZONE_BY_ID, ZONES, neighbours
 
 RISK_WEIGHTS = {"crowd": 0.30, "traffic": 0.25, "aqi": 0.20, "waste": 0.15, "emergency": 0.10}
@@ -46,13 +46,14 @@ def validate_levers(levers):
     return lv
 
 
-def simulate(crowd_model, aqi_model, levers=None, weather_seed=2026):
+def simulate(crowd_model, aqi_model, levers=None, day=None):
     lv = validate_levers(levers)
-    rain, temp, wind = weather(np.random.default_rng(weather_seed))
+    day = day or scenario_day()
+    rain, temp, wind, prev = day["rain"], day["temp"], day["wind"], day["aqi_prev"]
     if lv["rain_override_mm"] is not None:
-        rain = np.full_like(rain, float(lv["rain_override_mm"]))
-    df = pd.concat([features(z, rain, temp, wind, True, int(lv["start_shift_h"])) for z in ZONES], ignore_index=True)
-    cf = pd.concat([features(z, rain, temp, wind, False) for z in ZONES], ignore_index=True)
+        rain = np.full(len(rain), float(lv["rain_override_mm"]))
+    df = pd.concat([features(z, rain, temp, wind, True, int(lv["start_shift_h"]), prev) for z in ZONES], ignore_index=True)
+    cf = pd.concat([features(z, rain, temp, wind, False, aqi_prev=prev) for z in ZONES], ignore_index=True)
     df["hist_crowd"], cf["hist_crowd"] = lookup_history(df, crowd_model.history), lookup_history(cf, crowd_model.history)
 
     mid, lo, hi = crowd_model.predict(df)

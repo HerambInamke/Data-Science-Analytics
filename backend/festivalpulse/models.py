@@ -15,7 +15,8 @@ class QuantileModel:
     def __init__(self, features):
         self.features = features
         # point forecast uses squared error (beat quantile-0.5 loss on holdout); p10/p90 give the 80% interval
-        kw = dict(max_iter=500, learning_rate=0.05, random_state=0)
+        # chosen on a 2024 validation year (train 2022-23), never on the 2025 holdout (REQ §18.2)
+        kw = dict(max_iter=300, learning_rate=0.05, min_samples_leaf=40, random_state=0)
         self.models = {"p10": HistGradientBoostingRegressor(loss="quantile", quantile=0.1, **kw),
                        "p50": HistGradientBoostingRegressor(**kw),
                        "p90": HistGradientBoostingRegressor(loss="quantile", quantile=0.9, **kw)}
