@@ -1,0 +1,74 @@
+[
+ {
+  "source": "weather",
+  "year": 2022,
+  "url": "https://archive-api.open-meteo.com/v1/archive?latitude=18.5196&longitude=73.8554&hourly=precipitation%2Ctemperature_2m%2Cwind_speed_10m&timezone=Asia%2FKolkata&start_date=2022-08-20&end_date=2022-09-10",
+  "licence": "real: Open-Meteo historical weather (ERA5 reanalysis), CC BY 4.0",
+  "path": "weather_2022.json",
+  "fetched_at": "2026-10-26T15:31:09+00:00",
+  "sha256": "6e6b4123778af36a90963c140c866b4ac0df88469941830c252ac4bb4f0b6b39"
+ },
+ {
+  "source": "air",
+  "year": 2022,
+  "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=18.5196&longitude=73.8554&hourly=us_aqi%2Cpm2_5%2Cpm10&timezone=Asia%2FKolkata&start_date=2022-08-20&end_date=2022-09-10",
+  "licence": "real (modelled): Open-Meteo air quality (CAMS reanalysis/forecast, city grid cell), CC BY 4.0",
+  "path": "air_2022.json",
+  "fetched_at": "2026-10-26T15:31:10+00:00",
+  "sha256": "7c23e9632afdfde4b1d36d42b6f63ed340aea04a493f8e660702e4c2f3daa4fc"
+ },
+ {
+  "source": "weather",
+  "year": 2023,
+  "url": "https://archive-api.open-meteo.com/v1/archive?latitude=18.5196&longitude=73.8554&hourly=precipitation%2Ctemperature_2m%2Cwind_speed_10m&timezone=Asia%2FKolkata&start_date=2023-09-08&end_date=2023-09-29",
+  "licence": "real: Open-Meteo historical weather (ERA5 reanalysis), CC BY 4.0",
+  "path": "weather_2023.json",
+  "fetched_at": "2026-10-26T15:31:11+00:00",
+  "sha256": "c83a34e1accc7d3be46505d539f8c0f312fa0ac61bff35ea2e075e499e16cf14"
+ },
+ {
+  "source": "air",
+  "year": 2023,
+  "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=18.5196&longitude=73.8554&hourly=us_aqi%2Cpm2_5%2Cpm10&timezone=Asia%2FKolkata&start_date=2023-09-08&end_date=2023-09-29",
+  "licence": "real (modelled): Open-Meteo air quality (CAMS reanalysis/forecast, city grid cell), CC BY 4.0",
+  "path": "air_2023.json",
+  "fetched_at": "2026-10-26T15:31:12+00:00",
+  "sha256": "7bf96ddec52b3e28610929a56c94f45970aea2a3cf8ffd4e6c8e4f0379c7b5fb"
+ },
+ {
+  "source": "weather",
+  "year": 2024,
+  "url": "https://archive-api.open-meteo.com/v1/archive?latitude=18.5196&longitude=73.8554&hourly=precipitation%2Ctemperature_2m%2Cwind_speed_10m&timezone=Asia%2FKolkata&start_date=2024-08-28&end_date=2024-09-18",
+  "licence": "real: Open-Meteo historical weather (ERA5 reanalysis), CC BY 4.0",
+  "path": "weather_2024.json",
+  "fetched_at": "2026-10-26T15:31:12+00:00",
+  "sha256": "38c7a18daa566c0384304b7ae2333cc40b46c47ea8a96bbf496b754a2bb9ce81"
+ },
+ {
+  "source": "air",
+  "year": 2024,
+  "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=18.5196&longitude=73.8554&hourly=us_aqi%2Cpm2_5%2Cpm10&timezone=Asia%2FKolkata&start_date=2024-08-28&end_date=2024-09-18",
+  "licence": "real (modelled): Open-Meteo air quality (CAMS reanalysis/forecast, city grid cell), CC BY 4.0",
+  "path": "air_2024.json",
+  "fetched_at": "2026-10-26T15:31:13+00:00",
+  "sha256": "1a93bbf4061e1ae0a08aaa3e3b27b3680e8085e59b1f7cd06a04fcc6c24d0635"
+ },
+ {
+  "source": "weather",
+  "year": 2025,
+  "url": "https://archive-api.open-meteo.com/v1/archive?latitude=18.5196&longitude=73.8554&hourly=precipitation%2Ctemperature_2m%2Cwind_speed_10m&timezone=Asia%2FKolkata&start_date=2025-08-17&end_date=2025-09-07",
+  "licence": "real: Open-Meteo historical weather (ERA5 reanalysis), CC BY 4.0",
+  "path": "weather_2025.json",
+  "fetched_at": "2026-10-26T15:31:14+00:00",
+  "sha256": "a124fd722cc0d1a70a56c5b6089bcf4df3922c207816b5a9868926d3591dad13"
+ },
+ {
+  "source": "air",
+  "year": 2025,
+  "url": "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=18.5196&longitude=73.8554&hourly=us_aqi%2Cpm2_5%2Cpm10&timezone=Asia%2FKolkata&start_date=2025-08-17&end_date=2025-09-07",
+  "licence": "real (modelled): Open-Meteo air quality (CAMS reanalysis/forecast, city grid cell), CC BY 4.0",
+  "path": "air_2025.json",
+  "fetched_at": "2026-10-26T15:31:15+00:00",
+  "sha256": "e1cfad49a96dac519469ad7c2fa665292279c32b2d1e982447ccd0df18d51535"
+ }
+]
