@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FestivalPulse</title>
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous">
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
+<style>
+  :root { --bg:#0f1218; --panel:#171b23; --line:#2a303c; --text:#e8eaf0; --muted:#9aa3b2; --accent:#f5a524; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { display:flex; gap:12px; align-items:center; padding:10px 16px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; } header .sub { color:var(--muted); }
+  .badge { background:#5b3d00; color:#ffd58a; border:1px solid var(--accent); border-radius:4px; padding:1px 8px; font-size:12px; font-weight:600; }
+  main { display:grid; grid-template-columns: 1fr 420px; height: calc(100vh - 50px); }
+  #mapwrap { position:relative; } #map { position:absolute; inset:0; }
+  .controls { position:absolute; z-index:2; left:12px; right:12px; bottom:12px; background:var(--panel); border:1px solid var(--line);
+              border-radius:8px; padding:10px 12px; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .controls input[type=range] { flex:1; min-width:160px; }
+  #hourLabel { font-variant-numeric: tabular-nums; font-weight:600; min-width:48px; }
+  .legend { display:flex; gap:2px; align-items:center; font-size:12px; color:var(--muted); }
+  .legend span.sw { width:22px; height:12px; display:inline-block; }
+  aside { background:var(--panel); border-left:1px solid var(--line); overflow:auto; }
+  nav { display:flex; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--panel); }
+  nav button { flex:1; background:none; border:0; color:var(--muted); padding:10px 4px; cursor:pointer; font:inherit; border-bottom:2px solid transparent; }
+  nav button[aria-selected=true] { color:var(--text); border-color:var(--accent); }
+  section { padding:14px 16px; } section[hidden] { display:none; }
+  h2 { font-size:15px; margin:0 0 8px; } h3 { font-size:13px; margin:14px 0 6px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  table { width:100%; border-collapse:collapse; font-size:13px; } td, th { padding:4px 6px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }
+  label { display:block; margin:8px 0 2px; color:var(--muted); font-size:12px; }
+  select, input, button.primary, textarea { font:inherit; background:#0f1218; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:6px 8px; }
+  button.primary { background:var(--accent); color:#1a1200; border:0; font-weight:600; cursor:pointer; margin-top:10px; }
+  .row { display:flex; gap:8px; } .row > * { flex:1; }
+  .muted { color:var(--muted); font-size:12px; } .pos { color:#7bd88f; } .neg { color:#ff8a80; }
+  .answer { white-space:pre-wrap; background:#0f1218; border:1px solid var(--line); border-radius:6px; padding:10px; margin-top:10px; }
+  .zlabel { background:rgba(15,18,24,.85); color:#fff; border-radius:4px; padding:1px 5px; font-size:11px; font-weight:600; pointer-events:none; }
+  .bar { height:8px; background:var(--accent); border-radius:2px; }
+  @media (max-width: 900px) { main { grid-template-columns:1fr; grid-template-rows: 55vh auto; height:auto; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>FestivalPulse</h1><span class="sub">Ganesh Visarjan, Pune · impact digital twin</span>
+  <span class="badge" title="All models are trained on synthetic data">SYNTHETIC DATA</span>
+  <span class="sub" style="margin-left:auto">Scenario: <select id="scenario"><option value="baseline">Baseline</option></select></span>
+</header>
+<main>
+  <div id="mapwrap">
+    <div id="map" role="region" aria-label="Pune zone map"></div>
+    <div class="controls">
+      <label for="layer" style="margin:0">Layer</label>
+      <select id="layer">
+        <option value="risk">Combined risk</option><option value="crowd_idx">Crowd</option>
+        <option value="congestion_prob">Traffic</option><option value="aqi_pred">AQI</option>
+        <option value="waste_kg">Waste (kg/h)</option><option value="sanitation_risk">Sanitation</option>
+      </select>
+      <input id="hour" type="range" min="0" max="23" value="14" aria-label="Timeline hour">
+      <span id="hourLabel">20:00</span>
+      <div class="legend" id="legend"></div>
+    </div>
+  </div>
+  <aside>
+    <nav role="tablist">
+      <button role="tab" data-tab="zone" aria-selected="true">Zone</button>
+      <button role="tab" data-tab="whatif">What-if</button>
+      <button role="tab" data-tab="advisor">Advisor</button>
+      <button role="tab" data-tab="plan">Plan</button>
+      <button role="tab" data-tab="method">Method</button>
+    </nav>
+    <section id="tab-zone"><p class="muted">Click a zone on the map to see predictions, uncertainty, top drivers and actions.</p></section>
+    <section id="tab-whatif" hidden>
+      <h2>What-if simulator</h2>
+      <label for="sname">Scenario name</label><input id="sname" value="My scenario" style="width:100%">
+      <div class="row">
+        <div><label for="dzone">Diversion corridor</label><select id="dzone" class="zsel"></select></div>
+        <div><label for="dpct">Diversion % <b id="dpctv">20</b></label><input id="dpct" type="range" min="0" max="100" value="20"></div>
+      </div>
+      <div class="row">
+        <div><label for="shift">Immersion start shift (h)</label><input id="shift" type="number" min="-6" max="6" value="0"></div>
+        <div><label for="rain">Rain override (mm/h, blank = forecast)</label><input id="rain" type="number" min="0" max="100" step="0.5"></div>
+      </div>
+      <div class="row">
+        <div><label for="wzone">Extra waste points: zone</label><select id="wzone" class="zsel"></select></div>
+        <div><label for="wn">count</label><input id="wn" type="number" min="0" max="50" value="0"></div>
+      </div>
+      <div class="row">
+        <div><label for="tzone">Extra mobile toilets: zone</label><select id="tzone" class="zsel"></select></div>
+        <div><label for="tn">count</label><input id="tn" type="number" min="0" max="50" value="0"></div>
+      </div>
+      <button class="primary" id="run">Run scenario</button>
+      <div id="whatifOut"></div>
+    </section>
+    <section id="tab-advisor" hidden>
+      <h2>AI City Advisor</h2>
+      <p class="muted">Answers only from model outputs, with citations. Advisory only.</p>
+      <textarea id="q" rows="3" style="width:100%">Where should PMC place mobile toilets during Visarjan night?</textarea>
+      <button class="primary" id="ask">Ask</button>
+      <div id="answer"></div>
+    </section>
+    <section id="tab-plan" hidden>
+      <h2>Action plan</h2><a id="csv" class="muted" href="#">Download CSV</a>
+      <div id="planOut"></div>
+    </section>
+    <section id="tab-method" hidden><div id="methodOut"></div></section>
+  </aside>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const api = async (p, opt) => { const r = await fetch(p, opt); if (!r.ok) throw new Error((await r.json()).detail || r.status); return r.json(); };
+const hourLabel = h => String((6 + +h) % 24).padStart(2, "0") + ":00";
+// viridis steps: colour-blind safe; values are also printed on the map so colour is never the only cue
+const COLORS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
+const SCALE = { risk:[0,.8], crowd_idx:[0,1], congestion_prob:[0,1], aqi_pred:[50,300], waste_kg:[0,1500], sanitation_risk:[0,1] };
+let zones, rows = {}, selected = null, markers = [];
+
+const map = new maplibregl.Map({ container: "map", center: [73.86, 18.515], zoom: 12.2,
+  style: { version: 8, sources: { osm: { type: "raster", tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"], tileSize: 256,
+    attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.8, "raster-brightness-max": 0.6 } }] } });
+
+function bucket(layer, v) { const [lo, hi] = SCALE[layer]; return Math.max(0, Math.min(4, Math.floor((v - lo) / (hi - lo) * 5))); }
+function fmt(layer, v) { return layer === "aqi_pred" || layer === "waste_kg" ? Math.round(v) : v.toFixed(2); }
+
+function render() {
+  const layer = $("#layer").value, h = +$("#hour").value;
+  $("#hourLabel").textContent = hourLabel(h);
+  markers.forEach(m => m.remove()); markers = [];
+  for (const f of zones.features) {
+    const r = rows[f.properties.zone_id][h], v = r[layer];
+    map.setFeatureState({ source: "zones", id: f.id }, { color: COLORS[bucket(layer, v)] });
+    const el = document.createElement("div"); el.className = "zlabel"; el.textContent = `${f.properties.zone_id} ${fmt(layer, v)}`;
+    const [lon, lat] = f.geometry.coordinates[0].reduce((a, c) => [a[0] + c[0] / 7, a[1] + c[1] / 7], [0, 0]);
+    markers.push(new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map));
+  }
+  const [lo, hi] = SCALE[layer];
+  $("#legend").innerHTML = fmt(layer, lo) + COLORS.map(c => `<span class="sw" style="background:${c}"></span>`).join("") + fmt(layer, hi) + "+";
+  if (selected) showZone(selected);
+}
+
+async function loadScenario() {
+  const sid = $("#scenario").value;
+  const p = await api(`/api/predictions?scenario=${sid}`);
+  rows = {};
+  for (const r of p.rows) (rows[r.zone_id] ||= [])[r.h] = r;
+  render(); loadPlan();
+  history.replaceState(null, "", sid === "baseline" ? location.pathname : `#scenario=${sid}`);
+}
+
+async function showZone(zid) {
+  selected = zid;
+  const d = await api(`/api/zones/${zid}?h=${$("#hour").value}&scenario=${$("#scenario").value}`), p = d.prediction;
+  $("#tab-zone").innerHTML = `<h2>${esc(d.zone.name)}</h2><p class="muted">${zid} · ${d.zone.zone_type} · ${p.hour} · run ${esc(d.run_id)} · data: ${d.data_label}</p>
+    <table><tr><th>Metric</th><th>Prediction</th><th>80% interval</th></tr>
+    <tr><td>Crowd index</td><td>${p.crowd_idx}</td><td>${p.crowd_p10} – ${p.crowd_p90}</td></tr>
+    <tr><td>AQI</td><td>${Math.round(p.aqi_pred)} (+${Math.round(p.aqi_uplift)} festival)</td><td>${Math.round(p.aqi_p10)} – ${Math.round(p.aqi_p90)}</td></tr>
+    <tr><td>Congestion prob.</td><td>${p.congestion_prob}</td><td class="muted">rule-based</td></tr>
+    <tr><td>Waste</td><td>${Math.round(p.waste_kg)} kg/h</td><td class="muted">rule-based</td></tr>
+    <tr><td>Sanitation risk</td><td>${p.sanitation_risk}</td><td class="muted">rule-based</td></tr>
+    <tr><td>Emergency load</td><td>${p.emergency_per_h} incidents/h</td><td class="muted">rule-based</td></tr>
+    <tr><td><b>Combined risk</b></td><td><b>${p.risk}</b></td><td></td></tr></table>
+    <h3>Top crowd drivers (this hour)</h3><table>${d.drivers.map(x => `<tr><td>${esc(x.feature)}</td><td class="${x.contribution >= 0 ? "neg" : "pos"}">${x.contribution >= 0 ? "+" : ""}${x.contribution}</td></tr>`).join("")}</table>
+    <h3>Day summary</h3><p>Waste ${Math.round(d.summary.waste_kg_day)} kg/day, capacity ${Math.round(d.summary.collection_capacity_kg)} kg, uncollected <b>${Math.round(d.summary.uncollected_kg)} kg</b>${d.summary.hotspot ? " · <b>waste hotspot</b>" : ""}</p>
+    <h3>Recommended actions</h3>${d.actions.length ? `<table>${d.actions.map(a => `<tr><td>${a.window}</td><td>${esc(a.action)}<div class="muted">${esc(a.owner)} · ${esc(a.expected_impact)}</div></td></tr>`).join("")}</table>` : '<p class="muted">No thresholds crossed.</p>'}`;
+}
+
+async function loadPlan() {
+  const sid = $("#scenario").value, d = await api(`/api/action-plan?scenario=${sid}`);
+  $("#csv").href = `/api/action-plan?scenario=${sid}&format=csv`;
+  $("#planOut").innerHTML = `<table><tr><th>Zone</th><th>Window</th><th>Action</th></tr>${d.plan.map(a =>
+    `<tr><td>${a.zone_id}</td><td>${a.window}</td><td>${esc(a.action)}<div class="muted">${esc(a.owner)} · ${esc(a.expected_impact)}</div></td></tr>`).join("")}</table>`;
+}
+
+function scoreTable(s, b) {
+  return `<table><tr><th>Component</th><th>Weight</th><th>Baseline</th><th>Scenario</th></tr>${Object.keys(s.components).map(k => {
+    const d = s.components[k] - b.components[k];
+    return `<tr><td>${k.replace("_", " ")}</td><td>${s.weights[k]}</td><td>${b.components[k]}</td><td>${s.components[k]} <span class="${d >= 0 ? "pos" : "neg"}">${d >= 0 ? "+" : ""}${d.toFixed(1)}</span></td></tr>`; }).join("")}</table>`;
+}
+
+$("#run").onclick = async () => {
+  const levers = { diversion_pct: +$("#dpct").value, diversion_zone: $("#dzone").value, start_shift_h: +$("#shift").value || 0,
+    rain_override_mm: $("#rain").value === "" ? null : +$("#rain").value,
+    extra_waste_points: { [$("#wzone").value]: +$("#wn").value || 0 }, extra_toilets: { [$("#tzone").value]: +$("#tn").value || 0 } };
+  $("#whatifOut").innerHTML = '<p class="muted">Running…</p>';
+  try {
+    const r = await api("/api/scenarios", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: $("#sname").value, levers }) });
+    $("#scenario").add(new Option(r.name, r.scenario_id)); $("#scenario").value = r.scenario_id; await loadScenario();
+    const d = r.score.score - r.baseline_score.score;
+    $("#whatifOut").innerHTML = `<h3>Sustainability Score</h3><p style="font-size:22px;margin:0"><b>${r.score.score}</b> <span class="${d >= 0 ? "pos" : "neg"}">(${d >= 0 ? "+" : ""}${d.toFixed(1)} vs baseline ${r.baseline_score.score})</span></p>
+      <p class="muted">${r.score.note} Share: <a href="#scenario=${r.scenario_id}">#scenario=${r.scenario_id}</a></p>${scoreTable(r.score, r.baseline_score)}
+      <p>Uncollected waste: ${r.uncollected_kg.baseline} → <b>${r.uncollected_kg.scenario}</b> kg</p>
+      <h3>Mean change by zone (scenario − baseline)</h3><table><tr><th>Zone</th><th>Crowd</th><th>Traffic</th><th>AQI</th><th>Risk</th></tr>${r.zone_deltas.map(z =>
+        `<tr><td>${z.zone_id}</td><td>${z.crowd_idx}</td><td>${z.congestion_prob}</td><td>${z.aqi_pred}</td><td>${z.risk}</td></tr>`).join("")}</table>
+      <p class="muted">Levers use assumed effects; see Method tab.</p>`;
+  } catch (e) { $("#whatifOut").innerHTML = `<p class="neg">${esc(e.message)}</p>`; }
+};
+
+$("#ask").onclick = async () => {
+  const r = await api("/api/advisor/query", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question: $("#q").value, scenario_id: $("#scenario").value }) });
+  $("#answer").innerHTML = `<div class="answer">${esc(r.answer)}</div>${r.citations.length ? `<h3>Sources</h3><ul class="muted">${r.citations.map(c => `<li>${esc(Object.entries(c).map(([k, v]) => `${k}=${v}`).join(", "))}</li>`).join("")}</ul>` : ""}`;
+};
+
+async function loadMethod() {
+  const m = await api("/api/methodology");
+  const mt = Object.entries(m.metrics).map(([k, v]) => `<tr><td>${k}</td><td>${v.mae}</td><td>${v.baseline_mae}</td><td>${v.improvement_pct}%</td><td>${v.interval_coverage_80}</td></tr>`).join("");
+  $("#methodOut").innerHTML = `<h2>Methodology & limitations</h2><p class="badge">Data: ${m.data_label}</p>
+    <h3>Model evaluation (holdout = most recent festival)</h3><table><tr><th>Model</th><th>MAE</th><th>Naive MAE</th><th>Gain</th><th>80% cover</th></tr>${mt}</table>
+    <h3>Risk weights</h3><p>${Object.entries(m.risk_weights).map(([k, v]) => `${k} ${v}`).join(" · ")}</p>
+    <h3>Assumed effects</h3><table>${Object.entries(m.assumptions).map(([k, v]) => `<tr><td>${k}</td><td>${esc(v)}</td></tr>`).join("")}</table>
+    <h3>Limitations</h3><ul>${m.limitations.map(l => `<li>${esc(l)}</li>`).join("")}</ul><h3>Sources</h3><ul>${m.sources.map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
+}
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
+  document.querySelectorAll("aside section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
+});
+$("#dpct").oninput = e => $("#dpctv").textContent = e.target.value;
+$("#hour").oninput = render; $("#layer").onchange = render; $("#scenario").onchange = loadScenario;
+
+map.on("load", async () => {
+  zones = await api("/api/zones");
+  document.querySelectorAll(".zsel").forEach(s => zones.features.forEach(f => s.add(new Option(`${f.properties.zone_id} ${f.properties.name}`, f.properties.zone_id))));
+  $("#dzone").value = "Z03";
+  map.addSource("zones", { type: "geojson", data: zones });
+  map.addLayer({ id: "zfill", type: "fill", source: "zones", paint: { "fill-color": ["coalesce", ["feature-state", "color"], "#444"], "fill-opacity": 0.7 } });
+  map.addLayer({ id: "zline", type: "line", source: "zones", paint: { "line-color": "#fff", "line-width": 1 } });
+  map.on("click", "zfill", e => { showZone(e.features[0].properties.zone_id); document.querySelector('[data-tab=zone]').click(); });
+  map.on("mouseenter", "zfill", () => map.getCanvas().style.cursor = "pointer");
+  map.on("mouseleave", "zfill", () => map.getCanvas().style.cursor = "");
+  const shared = location.hash.match(/scenario=(\w+)/);
+  if (shared) { try { const s = await api(`/api/scenarios/${shared[1]}`); $("#scenario").add(new Option(s.name, s.scenario_id)); $("#scenario").value = s.scenario_id; } catch {} }
+  await loadScenario(); loadMethod();
+});
+</script>
+</body>
+</html>
