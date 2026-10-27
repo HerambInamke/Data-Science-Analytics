@@ -19,7 +19,7 @@ python -m uvicorn festivalpulse.main:app   # http://localhost:8000
 python -m pytest -q                        # tests
 ```
 
-Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` set on the server and sent as `X-Admin-Token`; without it they return 401.
+Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` set on the server and sent as `X-Admin-Token`; without it they return 401. With Docker: `FESTIVALPULSE_ADMIN_TOKEN=... docker compose up` (state is kept in the `state` volume).
 
 ## What's in this version (hackathon mode, REQ §22)
 
@@ -37,14 +37,15 @@ Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` s
 | Business layer | Footfall map layer and per-zone sales-uplift estimate for vendors |
 | Social signal radar | PII masking, landmark gazetteer, TF-IDF + logistic regression; synthetic template posts unless uploaded |
 | Admin settings | Risk fusion weights and action thresholds, editable with recompute; data refresh status |
+| Persistence | SQLite (`backend/data/festivalpulse.db`, override with `FESTIVALPULSE_DB`): scenarios, uploaded signals, settings, and a `model_runs` log with data version + commit (FR-8.3) |
 | Map + timeline UI | MapLibre, 06:00 → 05:00 slider, layer toggles, zone panel |
 
-Not yet: PostgreSQL/PostGIS persistence (scenarios, signals and settings reset on restart), real crowd labels, real social text / RSS ingest, LLM advisor, road-segment traffic.
+Not yet: PostgreSQL/PostGIS (SQLite is single-process), real crowd labels, real social text / RSS ingest, LLM advisor, road-segment traffic.
 
 ## Layout
 
 ```
-backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  signals.py  main.py
+backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  signals.py  store.py  main.py
 backend/tests/          scenario sanity checks, model-vs-baseline, API and advisor tests
 frontend/index.html     single-page map UI served at /
 ```

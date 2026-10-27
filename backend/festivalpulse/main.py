@@ -1,9 +1,11 @@
 """FastAPI layer (REQ §16). Run: uvicorn festivalpulse.main:app --reload (from backend/)."""
 import csv
+import hashlib
 import json
 import io
 import os
 import secrets
+import subprocess
 import time
 import uuid
 from collections import defaultdict, deque
@@ -16,7 +18,7 @@ from fpdf import FPDF
 import pandas as pd
 from pydantic import BaseModel
 
-from . import advisor, engine, signals
+from . import advisor, engine, signals, store
 from .data import DATA_LABEL, DATASETS, generate, scenario_day
 from .ingest import RAW
 from .models import train
@@ -27,7 +29,7 @@ PRED_COLS = ["zone_id", "h", "hour", "crowd_idx", "crowd_p10", "crowd_p90", "con
              "aqi_p90", "aqi_uplift", "waste_kg", "sanitation_risk", "emergency_per_h", "persons", "risk"]
 
 STATE = {}
-SCENARIOS = {}  # shortcut: in-memory, lost on restart; move to the scenarios table (Postgres) for sharing across restarts
+SCENARIOS = {}  # served results; inputs persist in store.scenarios and are re-simulated on startup
 
 
 def _run(levers=None):
@@ -35,17 +37,44 @@ def _run(levers=None):
     return {"df": df, "zs": zs, "levers": lv, "score": engine.sustainability(df, zs), "plan": engine.action_plan(df, zs)}
 
 
+def _data_version():
+    try:
+        return hashlib.sha256((RAW / "sources.json").read_bytes()).hexdigest()[:12]
+    except OSError:
+        return "synthetic-only"
+
+
+def _commit():
+    try:
+        return subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, timeout=5,
+                              cwd=FRONTEND.parent).stdout.strip() or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return os.environ.get("FESTIVALPULSE_COMMIT", "unknown")
+
+
 @asynccontextmanager
 async def lifespan(_app):
+    db = STATE["db"] = store.connect()
+    saved = store.load_settings(db)  # applied before any run so the baseline uses them
+    engine.RISK_WEIGHTS.update(saved.get("risk_weights", {}))
+    engine.ACTION_THRESHOLDS.update(saved.get("action_thresholds", {}))
     data = generate()
     STATE["crowd"], STATE["aqi"], STATE["metrics"] = train(data)
+    store.log_model_runs(db, STATE["metrics"], _data_version(), _commit())
     STATE["day"] = scenario_day()
     STATE["weather_real_share"] = round(float(data["weather_real"].mean()), 3)
     STATE["trained_at"] = time.time()
+    SCENARIOS.clear()
     SCENARIOS["baseline"] = {"name": "Baseline", **_run()}
+    # shortcut: every saved scenario is re-simulated at startup (~0.1 s each); cache results if this grows to hundreds
+    for sid, name, levers in store.load_scenarios(db):
+        try:
+            SCENARIOS[sid] = {"name": name, **_run(levers)}
+        except (ValueError, TypeError, AttributeError):
+            pass  # levers no longer valid under current rules; keep the row, skip serving it
     STATE["signal_clf"], STATE["signal_metrics"] = signals.train_classifier()
-    STATE["signals"] = signals.demo_feed(STATE["signal_clf"])
-    yield
+    STATE["signals"] = signals.demo_feed(STATE["signal_clf"]) + store.load_signals(db)
+    yield  # db stays open: every write commits immediately, process exit closes it
 
 
 app = FastAPI(title="FestivalPulse API", lifespan=lifespan)
@@ -136,6 +165,7 @@ def create_scenario(body: ScenarioIn):
         raise HTTPException(422, str(e))
     sid = uuid.uuid4().hex[:8]
     SCENARIOS[sid] = {"name": body.name[:80], **run}
+    store.save_scenario(STATE["db"], sid, body.name[:80], body.levers)
     return _compare(sid)
 
 
@@ -232,6 +262,7 @@ def upload_signals(body: SignalsIn, x_admin_token: str | None = Header(None)):
         raise HTTPException(413, "max 1000 texts per upload")
     added = signals.ingest(STATE["signal_clf"], body.texts)
     STATE["signals"].extend(added)
+    store.save_signals(STATE["db"], added, "manual upload")
     return {"added": len(added), "located": sum(1 for a in added if a["zone_id"]),
             "categories": {c: sum(a["category"] == c for a in added) for c in signals.CATEGORIES}}
 
@@ -271,6 +302,7 @@ def put_settings(body: SettingsIn, x_admin_token: str | None = Header(None)):
             raise HTTPException(422, f"invalid thresholds {bad}; ranges {THRESHOLD_RANGE}")
     engine.RISK_WEIGHTS.update(w or {})
     engine.ACTION_THRESHOLDS.update(t or {})
+    store.save_settings(STATE["db"], {"risk_weights": engine.RISK_WEIGHTS, "action_thresholds": engine.ACTION_THRESHOLDS})
     for sid, s in list(SCENARIOS.items()):
         SCENARIOS[sid] = {"name": s["name"], **_run(s["levers"])}
     return _settings()
@@ -282,7 +314,8 @@ def health():
     return {"status": "ok" if STATE else "starting", "data_label": DATA_LABEL,
             "scenario_weather": STATE["day"]["label"] if STATE else None,
             "weather_real_share": STATE.get("weather_real_share"),
-            "models_trained_at": STATE.get("trained_at"), "metrics": STATE.get("metrics")}
+            "models_trained_at": STATE.get("trained_at"), "metrics": STATE.get("metrics"),
+            "model_runs": store.model_runs(STATE["db"], 2) if "db" in STATE else []}
 
 
 def _source_log():
