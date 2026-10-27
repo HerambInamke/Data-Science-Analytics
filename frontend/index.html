@@ -55,6 +55,7 @@
         <option value="risk">Combined risk</option><option value="crowd_idx">Crowd</option>
         <option value="congestion_prob">Traffic</option><option value="aqi_pred">AQI</option>
         <option value="waste_kg">Waste (kg/h)</option><option value="sanitation_risk">Sanitation</option>
+        <option value="emergency_per_h">Emergency load</option><option value="persons">Business (footfall)</option>
       </select>
       <input id="hour" type="range" min="0" max="23" value="14" aria-label="Timeline hour">
       <span id="hourLabel">20:00</span>
@@ -100,7 +101,7 @@
       <div id="answer"></div>
     </section>
     <section id="tab-plan" hidden>
-      <h2>Action plan</h2><a id="csv" class="muted" href="#">Download CSV</a>
+      <h2>Action plan</h2><a id="csv" class="muted" href="#">Download CSV</a> · <a id="pdf" class="muted" href="#">Download PDF</a>
       <div id="planOut"></div>
     </section>
     <section id="tab-method" hidden><div id="methodOut"></div></section>
@@ -113,7 +114,7 @@ const api = async (p, opt) => { const r = await fetch(p, opt); if (!r.ok) throw 
 const hourLabel = h => String((6 + +h) % 24).padStart(2, "0") + ":00";
 // viridis steps: colour-blind safe; values are also printed on the map so colour is never the only cue
 const COLORS = ["#440154", "#3b528b", "#21918c", "#5ec962", "#fde725"];
-const SCALE = { risk:[0,.8], crowd_idx:[0,1], congestion_prob:[0,1], aqi_pred:[0,150], waste_kg:[0,1500], sanitation_risk:[0,1] };
+const SCALE = { risk:[0,.8], crowd_idx:[0,1], congestion_prob:[0,1], aqi_pred:[0,150], waste_kg:[0,1500], sanitation_risk:[0,1], emergency_per_h:[0,3.5], persons:[0,60000] };
 let zones, rows = {}, selected = null, markers = [];
 
 const map = new maplibregl.Map({ container: "map", center: [73.86, 18.515], zoom: 12.2,
@@ -121,7 +122,10 @@ const map = new maplibregl.Map({ container: "map", center: [73.86, 18.515], zoom
     attribution: "© OpenStreetMap contributors" } }, layers: [{ id: "osm", type: "raster", source: "osm", paint: { "raster-saturation": -0.8, "raster-brightness-max": 0.6 } }] } });
 
 function bucket(layer, v) { const [lo, hi] = SCALE[layer]; return Math.max(0, Math.min(4, Math.floor((v - lo) / (hi - lo) * 5))); }
-function fmt(layer, v) { return layer === "aqi_pred" || layer === "waste_kg" ? Math.round(v) : v.toFixed(2); }
+function fmt(layer, v) {
+  if (layer === "persons") return v >= 1000 ? Math.round(v / 1000) + "k" : Math.round(v);
+  return layer === "aqi_pred" || layer === "waste_kg" ? Math.round(v) : v.toFixed(2);
+}
 
 function render() {
   const layer = $("#layer").value, h = +$("#hour").value;
@@ -162,12 +166,17 @@ async function showZone(zid) {
     <tr><td><b>Combined risk</b></td><td><b>${p.risk}</b></td><td></td></tr></table>
     <h3>Top crowd drivers (this hour)</h3><table>${d.drivers.map(x => `<tr><td>${esc(x.feature)}</td><td class="${x.contribution >= 0 ? "neg" : "pos"}">${x.contribution >= 0 ? "+" : ""}${x.contribution}</td></tr>`).join("")}</table>
     <h3>Day summary</h3><p>Waste ${Math.round(d.summary.waste_kg_day)} kg/day, capacity ${Math.round(d.summary.collection_capacity_kg)} kg, uncollected <b>${Math.round(d.summary.uncollected_kg)} kg</b>${d.summary.hotspot ? " · <b>waste hotspot</b>" : ""}</p>
+    <h3>For vendors (advisory)</h3><p>Peak footfall: ${rows[zid].slice().sort((a, b) => b.persons - a.persons).slice(0, 3)
+      .map(r => `<b>${r.hour}</b> (~${Math.round(r.persons / 1000)}k people)`).join(", ")}.
+      Estimated festival sales uplift ₹${Math.round(d.summary.sales_uplift_inr).toLocaleString("en-IN")} across the zone's stalls
+      <span class="muted">(assumed 1.0–2.0× range; see Method)</span>.</p>
     <h3>Recommended actions</h3>${d.actions.length ? `<table>${d.actions.map(a => `<tr><td>${a.window}</td><td>${esc(a.action)}<div class="muted">${esc(a.owner)} · ${esc(a.expected_impact)}</div></td></tr>`).join("")}</table>` : '<p class="muted">No thresholds crossed.</p>'}`;
 }
 
 async function loadPlan() {
   const sid = $("#scenario").value, d = await api(`/api/action-plan?scenario=${sid}`);
   $("#csv").href = `/api/action-plan?scenario=${sid}&format=csv`;
+  $("#pdf").href = `/api/action-plan?scenario=${sid}&format=pdf`;
   $("#planOut").innerHTML = `<table><tr><th>Zone</th><th>Window</th><th>Action</th></tr>${d.plan.map(a =>
     `<tr><td>${a.zone_id}</td><td>${a.window}</td><td>${esc(a.action)}<div class="muted">${esc(a.owner)} · ${esc(a.expected_impact)}</div></td></tr>`).join("")}</table>`;
 }
