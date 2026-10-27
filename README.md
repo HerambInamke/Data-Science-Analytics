@@ -48,6 +48,7 @@ Not yet: PostgreSQL/PostGIS (SQLite is single-process), real crowd labels, real 
 backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  signals.py  store.py  main.py
 backend/tests/          scenario sanity checks, model-vs-baseline, API and advisor tests
 frontend/index.html     single-page map UI served at /
+docs/                   evaluation.md (generated: python -m festivalpulse.report), model-cards.md, data-dictionary.md
 ```
 
 ## API
