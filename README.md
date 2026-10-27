@@ -19,6 +19,8 @@ python -m uvicorn festivalpulse.main:app   # http://localhost:8000
 python -m pytest -q                        # tests
 ```
 
+Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` set on the server and sent as `X-Admin-Token`; without it they return 401.
+
 ## What's in this version (hackathon mode, REQ §22)
 
 | Area | Status |
@@ -30,21 +32,25 @@ python -m pytest -q                        # tests
 | What-if: diversion %, start-time shift, rain, waste points, toilets | Baseline vs scenario comparison, shareable link |
 | Sustainability Score (0-100) with breakdown | Yes |
 | Advisor | Retrieval-only answers with citations; refuses operational commands |
-| Action plan | JSON + CSV |
+| Action plan | JSON, CSV and PDF |
+| Interval calibration | Conformalized quantile intervals, calibrated on the year before the holdout |
+| Business layer | Footfall map layer and per-zone sales-uplift estimate for vendors |
+| Social signal radar | PII masking, landmark gazetteer, TF-IDF + logistic regression; synthetic template posts unless uploaded |
+| Admin settings | Risk fusion weights and action thresholds, editable with recompute; data refresh status |
 | Map + timeline UI | MapLibre, 06:00 → 05:00 slider, layer toggles, zone panel |
 
-Not yet: PostgreSQL/PostGIS persistence, real crowd labels, social signal radar, PDF export, LLM advisor, road-segment traffic.
+Not yet: PostgreSQL/PostGIS persistence (scenarios, signals and settings reset on restart), real crowd labels, real social text / RSS ingest, LLM advisor, road-segment traffic.
 
 ## Layout
 
 ```
-backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  main.py
+backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  signals.py  main.py
 backend/tests/          scenario sanity checks, model-vs-baseline, API and advisor tests
 frontend/index.html     single-page map UI served at /
 ```
 
 ## API
 
-`GET /api/zones` · `GET /api/predictions` · `GET /api/risk` · `GET /api/zones/{id}` · `POST /api/scenarios` · `GET /api/scenarios/{id}` · `POST /api/advisor/query` · `GET /api/action-plan?format=csv` · `GET /api/health` · `GET /api/methodology`
+`GET /api/zones` · `GET /api/predictions` · `GET /api/risk` · `GET /api/zones/{id}` · `POST /api/scenarios` · `GET /api/scenarios/{id}` · `POST /api/advisor/query` · `GET /api/action-plan?format=csv|pdf` · `GET/POST /api/signals` · `GET/PUT /api/admin/settings` · `GET /api/health` · `GET /api/methodology`
 
 Map tiles © OpenStreetMap contributors. Weather and air-quality data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0).
