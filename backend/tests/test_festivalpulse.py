@@ -100,3 +100,19 @@ def test_real_inputs_used_and_fallback_when_missing(monkeypatch, tmp_path):  # N
     monkeypatch.setattr(ingest, "RAW", tmp_path)  # no raw files -> synthetic fallback, labelled
     day = data.scenario_day()
     assert not day["real"] and "synthetic" in day["label"] and len(day["rain"]) == 24
+
+
+def test_intervals_calibrated_on_holdout(models):  # FR-1.7, REQ §18.1 calibration
+    for name in ("crowd", "aqi"):
+        assert models[2][name]["interval_coverage_80"] >= 0.75, models[2][name]
+
+
+def test_action_plan_pdf(client):  # FR-6.2
+    r = client.get("/api/action-plan", params={"format": "pdf"})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/pdf" and r.content.startswith(b"%PDF")
+
+
+def test_business_layer_footfall(client):  # FR-1.6 / vendor flow
+    rows = client.get("/api/predictions", params={"layer": "persons", "zone": "Z02"}).json()["rows"]
+    assert len(rows) == 24 and max(r["persons"] for r in rows) > 0
+    assert client.get("/api/zones/Z02").json()["summary"]["sales_uplift_inr"] > 0

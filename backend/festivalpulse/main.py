@@ -10,6 +10,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
+from fpdf import FPDF
 from pydantic import BaseModel
 
 from . import advisor, engine
@@ -20,7 +21,7 @@ from .zones import ZONE_BY_ID, geojson
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend" / "index.html"
 PRED_COLS = ["zone_id", "h", "hour", "crowd_idx", "crowd_p10", "crowd_p90", "congestion_prob", "aqi_pred", "aqi_p10",
-             "aqi_p90", "aqi_uplift", "waste_kg", "sanitation_risk", "emergency_per_h", "risk"]
+             "aqi_p90", "aqi_uplift", "waste_kg", "sanitation_risk", "emergency_per_h", "persons", "risk"]
 
 STATE = {}
 SCENARIOS = {}  # shortcut: in-memory, lost on restart; move to the scenarios table (Postgres) for sharing across restarts
@@ -159,7 +160,28 @@ def action_plan(scenario: str = "baseline", format: str = "json"):
         w.writerows(plan)
         return Response(buf.getvalue(), media_type="text/csv",
                         headers={"Content-Disposition": f"attachment; filename=action-plan-{scenario}.csv"})
+    if format == "pdf":
+        return Response(plan_pdf(plan, _scenario(scenario)["name"]), media_type="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename=action-plan-{scenario}.pdf"})
     return {"run_id": scenario, "plan": plan}
+
+
+def plan_pdf(plan, name):
+    """FR-6.2 PDF export. Core PDF fonts are Latin-1 only, so other characters are replaced."""
+    clean = lambda t: str(t).encode("latin-1", "replace").decode("latin-1")
+    pdf = FPDF(orientation="landscape")
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 14)
+    pdf.cell(0, 8, clean(f"FestivalPulse action plan - Ganesh Visarjan, Pune - {name}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", size=8)
+    pdf.multi_cell(0, 4, clean(f"Data: {DATA_LABEL}. Planning suggestions only; not operational orders. "
+                               "Generated " + time.strftime("%Y-%m-%d %H:%M")), new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    with pdf.table(col_widths=(14, 50, 22, 80, 40, 60), text_align="LEFT") as t:
+        t.row(["Zone", "Name", "Window", "Action", "Owner", "Expected impact"])
+        for a in plan:
+            t.row([clean(a[k]) for k in ("zone_id", "zone", "window", "action", "owner", "expected_impact")])
+    return bytes(pdf.output())
 
 
 @app.get("/api/health")
