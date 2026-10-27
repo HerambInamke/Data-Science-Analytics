@@ -140,3 +140,23 @@ def test_signals_api(client, monkeypatch):  # FR-3.1, FR-3.2, FR-3.4, REQ §10.5
     from festivalpulse.main import STATE
     assert "9876543210" not in STATE["signals"][-1]["text"]
     assert client.get("/api/signals", params={"zone": "Z03"}).json()["zones"][0]["counts"]["TOO_CROWDED"] == before + 1
+
+
+def test_admin_settings_recompute(client, monkeypatch):  # REQ §15 screen 8, §16 admin auth
+    assert client.get("/api/admin/settings").status_code == 401
+    monkeypatch.setenv("FESTIVALPULSE_ADMIN_TOKEN", "t0ken")
+    h = {"X-Admin-Token": "t0ken"}
+    s = client.get("/api/admin/settings", headers=h).json()
+    w0, t0 = dict(s["risk_weights"]), dict(s["action_thresholds"])
+    assert client.put("/api/admin/settings", json={"risk_weights": {"crowd": 2}}, headers=h).status_code == 422
+    assert client.put("/api/admin/settings", json={"action_thresholds": {"aqi_pred": -1}}, headers=h).status_code == 422
+    n0 = len(client.get("/api/action-plan").json()["plan"])
+    try:
+        only_crowd = dict.fromkeys(w0, 0) | {"crowd": 1}
+        client.put("/api/admin/settings", json={"risk_weights": only_crowd, "action_thresholds": {"crowd_idx": 0.99}}, headers=h)
+        rows = client.get("/api/predictions", params={"zone": "Z01"}).json()["rows"]
+        assert all(abs(r["risk"] - r["crowd_idx"]) < 1e-3 for r in rows)
+        assert len(client.get("/api/action-plan").json()["plan"]) < n0
+    finally:
+        client.put("/api/admin/settings", json={"risk_weights": w0, "action_thresholds": t0}, headers=h)
+    assert len(client.get("/api/action-plan").json()["plan"]) == n0

@@ -12,6 +12,8 @@ from .zones import ZONE_BY_ID, ZONES, neighbours
 RISK_WEIGHTS = {"crowd": 0.30, "traffic": 0.25, "aqi": 0.20, "waste": 0.15, "emergency": 0.10}
 SCORE_WEIGHTS = {"emissions": 20, "waste": 20, "traffic_delay": 15, "crowd_safety": 20, "economic": 15, "water": 10}
 HIGH_CROWD = 0.75
+# action-plan triggers; admin-editable at runtime (REQ §15 Settings)
+ACTION_THRESHOLDS = {"crowd_idx": 0.7, "congestion_prob": 0.7, "sanitation_risk": 0.5, "aqi_pred": 200}
 ASSUMPTIONS = {
     "traffic": "congestion = sigmoid(8*(load-0.6) + 0.1*rain); load = 0.6*crowd + 0.4*time-of-day traffic",
     "diversion": "diverted load on the corridor is split equally onto its 2 nearest zones (shortest-path proxy)",
@@ -131,13 +133,13 @@ def _window(sub, mask):
 
 def action_plan(df, zs):
     rules = [
-        ("crowd_idx", 0.7, "Deploy volunteers and barricades; open alternate exits", "Police + mandal volunteers",
+        ("crowd_idx", ACTION_THRESHOLDS["crowd_idx"], "Deploy volunteers and barricades; open alternate exits", "Police + mandal volunteers",
          lambda s: f"peak crowd index {s['crowd_idx'].max():.2f}"),
-        ("congestion_prob", 0.7, "Restrict vehicle entry and activate diversions", "Traffic police",
+        ("congestion_prob", ACTION_THRESHOLDS["congestion_prob"], "Restrict vehicle entry and activate diversions", "Traffic police",
          lambda s: f"peak congestion probability {s['congestion_prob'].max():.2f}"),
-        ("sanitation_risk", 0.5, "Place extra mobile toilets", "PMC sanitation",
+        ("sanitation_risk", ACTION_THRESHOLDS["sanitation_risk"], "Place extra mobile toilets", "PMC sanitation",
          lambda s: f"peak sanitation risk {s['sanitation_risk'].max():.2f}"),
-        ("aqi_pred", 200, "Water sprinkling on dusty stretches; mask advisory for vulnerable groups", "PMC environment cell",
+        ("aqi_pred", ACTION_THRESHOLDS["aqi_pred"], "Water sprinkling on dusty stretches; mask advisory for vulnerable groups", "PMC environment cell",
          lambda s: f"peak AQI {s['aqi_pred'].max():.0f}"),
     ]
     plan = []

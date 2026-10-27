@@ -236,6 +236,46 @@ def upload_signals(body: SignalsIn, x_admin_token: str | None = Header(None)):
             "categories": {c: sum(a["category"] == c for a in added) for c in signals.CATEGORIES}}
 
 
+THRESHOLD_RANGE = {"crowd_idx": (0, 1), "congestion_prob": (0, 1), "sanitation_risk": (0, 1), "aqi_pred": (0, 500)}
+
+
+def _settings():
+    return {"risk_weights": engine.RISK_WEIGHTS, "action_thresholds": engine.ACTION_THRESHOLDS,
+            "threshold_ranges": THRESHOLD_RANGE, "models_trained_at": STATE.get("trained_at"),
+            "weather_real_share": STATE.get("weather_real_share"), "raw_sources": _source_log(),
+            "signals_stored": len(STATE.get("signals", [])), "scenarios_in_memory": len(SCENARIOS)}
+
+
+@app.get("/api/admin/settings")
+def get_settings(x_admin_token: str | None = Header(None)):
+    _admin(x_admin_token)
+    return _settings()
+
+
+class SettingsIn(BaseModel):
+    risk_weights: dict[str, float] | None = None
+    action_thresholds: dict[str, float] | None = None
+
+
+@app.put("/api/admin/settings")
+def put_settings(body: SettingsIn, x_admin_token: str | None = Header(None)):
+    """Screen 8: change fusion weights / action thresholds, then recompute every stored scenario."""
+    _admin(x_admin_token)
+    w, t = body.risk_weights, body.action_thresholds
+    if w is not None:
+        if set(w) != set(engine.RISK_WEIGHTS) or min(w.values()) < 0 or abs(sum(w.values()) - 1) > 0.01:
+            raise HTTPException(422, f"risk_weights need keys {sorted(engine.RISK_WEIGHTS)}, each >= 0, summing to 1")
+    if t is not None:
+        bad = [k for k, v in t.items() if k not in THRESHOLD_RANGE or not THRESHOLD_RANGE[k][0] <= v <= THRESHOLD_RANGE[k][1]]
+        if bad:
+            raise HTTPException(422, f"invalid thresholds {bad}; ranges {THRESHOLD_RANGE}")
+    engine.RISK_WEIGHTS.update(w or {})
+    engine.ACTION_THRESHOLDS.update(t or {})
+    for sid, s in list(SCENARIOS.items()):
+        SCENARIOS[sid] = {"name": s["name"], **_run(s["levers"])}
+    return _settings()
+
+
 @app.get("/api/health")
 def health():
     # NFR-5: anything below 1.0 means some days fell back to synthetic weather; the UI shows a badge

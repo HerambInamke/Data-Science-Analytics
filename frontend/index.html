@@ -70,6 +70,7 @@
       <button role="tab" data-tab="plan">Plan</button>
       <button role="tab" data-tab="signals">Signals</button>
       <button role="tab" data-tab="method">Method</button>
+      <button role="tab" data-tab="settings">Admin</button>
     </nav>
     <section id="tab-zone"><p class="muted">Click a zone on the map to see predictions, uncertainty, top drivers and actions.</p></section>
     <section id="tab-whatif" hidden>
@@ -110,6 +111,12 @@
       <label for="sigcat">Category</label>
       <select id="sigcat"><option value="">All categories</option></select>
       <div id="sigOut"></div>
+    </section>
+    <section id="tab-settings" hidden>
+      <h2>Settings (admin)</h2>
+      <label for="token">Admin token</label><input id="token" type="password" autocomplete="off" style="width:100%">
+      <button class="primary" id="loadSettings">Load settings</button>
+      <div id="settingsOut"></div>
     </section>
     <section id="tab-method" hidden><div id="methodOut"></div></section>
   </aside>
@@ -244,6 +251,35 @@ async function loadSignals() {
     <h3>Classifier (held-out)</h3><table><tr><th>Category</th><th>Precision</th><th>Recall</th><th>n</th></tr>${Object.entries(d.classifier_metrics).map(([k, m]) =>
       `<tr><td>${k}</td><td>${m.precision}</td><td>${m.recall}</td><td>${m.n}</td></tr>`).join("")}</table>`;
 }
+
+const adminHeaders = () => ({ "Content-Type": "application/json", "X-Admin-Token": $("#token").value });
+const numInputs = (group, obj, step) => Object.entries(obj).map(([k, v]) =>
+  `<div><label for="${group}-${k}">${k.replace(/_/g, " ")}</label><input id="${group}-${k}" data-group="${group}" data-key="${k}" type="number" step="${step}" value="${v}" style="width:100%"></div>`).join("");
+
+function renderSettings(s, msg = "") {
+  $("#settingsOut").innerHTML = `<h3>Risk fusion weights (sum to 1)</h3><div class="row">${numInputs("risk_weights", s.risk_weights, 0.05)}</div>
+    <h3>Action-plan thresholds</h3><div class="row">${numInputs("action_thresholds", s.action_thresholds, 0.05)}</div>
+    <button class="primary" id="saveSettings">Save and recompute</button> <span id="settingsMsg" class="muted">${esc(msg)}</span>
+    <h3>Data refresh status</h3><table>
+      <tr><td>Models trained</td><td>${new Date(s.models_trained_at * 1000).toLocaleString()}</td></tr>
+      <tr><td>Real weather share</td><td>${s.weather_real_share}</td></tr>
+      <tr><td>Signals stored</td><td>${s.signals_stored}</td></tr>
+      <tr><td>Scenarios in memory</td><td>${s.scenarios_in_memory}</td></tr>
+      ${s.raw_sources.map(r => `<tr><td>${esc(r.path)}</td><td class="muted">${esc(r.fetched_at)}</td></tr>`).join("")}</table>`;
+  $("#saveSettings").onclick = async () => {
+    const body = { risk_weights: {}, action_thresholds: {} };
+    document.querySelectorAll("#settingsOut input[data-group]").forEach(i => body[i.dataset.group][i.dataset.key] = +i.value);
+    try {
+      renderSettings(await api("/api/admin/settings", { method: "PUT", headers: adminHeaders(), body: JSON.stringify(body) }), "Saved; all scenarios recomputed.");
+      await loadScenario();
+    } catch (e) { $("#settingsMsg").textContent = e.message; $("#settingsMsg").className = "neg"; }
+  };
+}
+
+$("#loadSettings").onclick = async () => {
+  try { renderSettings(await api("/api/admin/settings", { headers: adminHeaders() })); }
+  catch (e) { $("#settingsOut").innerHTML = `<p class="neg">${esc(e.message)}</p>`; }
+};
 
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
