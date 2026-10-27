@@ -68,6 +68,7 @@
       <button role="tab" data-tab="whatif">What-if</button>
       <button role="tab" data-tab="advisor">Advisor</button>
       <button role="tab" data-tab="plan">Plan</button>
+      <button role="tab" data-tab="signals">Signals</button>
       <button role="tab" data-tab="method">Method</button>
     </nav>
     <section id="tab-zone"><p class="muted">Click a zone on the map to see predictions, uncertainty, top drivers and actions.</p></section>
@@ -103,6 +104,12 @@
     <section id="tab-plan" hidden>
       <h2>Action plan</h2><a id="csv" class="muted" href="#">Download CSV</a> · <a id="pdf" class="muted" href="#">Download PDF</a>
       <div id="planOut"></div>
+    </section>
+    <section id="tab-signals" hidden>
+      <h2>Social signal radar</h2>
+      <label for="sigcat">Category</label>
+      <select id="sigcat"><option value="">All categories</option></select>
+      <div id="sigOut"></div>
     </section>
     <section id="tab-method" hidden><div id="methodOut"></div></section>
   </aside>
@@ -225,11 +232,25 @@ async function loadMethod() {
     <h3>Limitations</h3><ul>${m.limitations.map(l => `<li>${esc(l)}</li>`).join("")}</ul><h3>Sources</h3><ul>${m.sources.map(s => `<li>${esc(s)}</li>`).join("")}</ul>`;
 }
 
+async function loadSignals() {
+  const cat = $("#sigcat").value, d = await api(`/api/signals${cat ? "?category=" + cat : ""}`);
+  if ($("#sigcat").options.length === 1) Object.keys(d.classifier_metrics).forEach(c => $("#sigcat").add(new Option(c.replace(/_/g, " ").toLowerCase(), c)));
+  const max = Math.max(1, ...d.zones.map(z => z.total)), v = d.validation;
+  $("#sigOut").innerHTML = `<p class="badge">${esc(d.data_label)}</p>
+    <table><tr><th>Zone</th><th>Posts</th><th></th><th>Pred. peak crowd</th></tr>${d.zones.slice().sort((a, b) => b.total - a.total).map(z =>
+      `<tr><td title="${esc(z.name)}">${z.zone_id}</td><td>${z.total}</td><td style="width:40%"><div class="bar" style="width:${100 * z.total / max}%"></div></td><td>${z.predicted_peak_crowd}</td></tr>`).join("")}</table>
+    <h3>Validation</h3><p>Spearman ρ, crowd-pressure posts vs predicted peak crowd: <b>${v.spearman_pressure_vs_predicted_crowd}</b></p>
+    <p class="muted">${esc(v.note)} ${d.unlocated} posts could not be placed in a zone. Counts only; no raw text is shown.</p>
+    <h3>Classifier (held-out)</h3><table><tr><th>Category</th><th>Precision</th><th>Recall</th><th>n</th></tr>${Object.entries(d.classifier_metrics).map(([k, m]) =>
+      `<tr><td>${k}</td><td>${m.precision}</td><td>${m.recall}</td><td>${m.n}</td></tr>`).join("")}</table>`;
+}
+
 document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
   document.querySelectorAll("nav button").forEach(x => x.setAttribute("aria-selected", x === b));
   document.querySelectorAll("aside section").forEach(s => s.hidden = s.id !== "tab-" + b.dataset.tab);
 });
 $("#dpct").oninput = e => $("#dpctv").textContent = e.target.value;
+$("#sigcat").onchange = loadSignals;
 $("#hour").oninput = render; $("#layer").onchange = render; $("#scenario").onchange = loadScenario;
 
 map.on("load", async () => {
@@ -244,7 +265,7 @@ map.on("load", async () => {
   map.on("mouseleave", "zfill", () => map.getCanvas().style.cursor = "");
   const shared = location.hash.match(/scenario=(\w+)/);
   if (shared) { try { const s = await api(`/api/scenarios/${shared[1]}`); $("#scenario").add(new Option(s.name, s.scenario_id)); $("#scenario").value = s.scenario_id; } catch {} }
-  await loadScenario(); loadMethod();
+  await loadScenario(); loadMethod(); loadSignals();
 });
 </script>
 </body>

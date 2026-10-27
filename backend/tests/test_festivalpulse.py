@@ -116,3 +116,27 @@ def test_business_layer_footfall(client):  # FR-1.6 / vendor flow
     rows = client.get("/api/predictions", params={"layer": "persons", "zone": "Z02"}).json()["rows"]
     assert len(rows) == 24 and max(r["persons"] for r in rows) > 0
     assert client.get("/api/zones/Z02").json()["summary"]["sales_uplift_inr"] > 0
+
+
+def test_signal_pii_masked_and_geocoded():  # FR-3.3, FR-3.5
+    from festivalpulse import signals
+    t = signals.mask_pii("Crowd at Laxmi Road, call +91 98765 43210 or a@b.com @ravi https://x.co/1")
+    assert "98765" not in t and "a@b.com" not in t and "@ravi" not in t and "x.co" not in t
+    assert signals.geocode("jam near Sangam Bridge") == "Z05" and signals.geocode("nowhere known") is None
+
+
+def test_signals_api(client, monkeypatch):  # FR-3.1, FR-3.2, FR-3.4, REQ §10.5
+    d = client.get("/api/signals").json()
+    assert len(d["zones"]) == 10 and "synthetic" in d["data_label"] and "text" not in d["zones"][0]
+    assert sum(m["n"] for m in d["classifier_metrics"].values()) == 300
+    assert all(m["recall"] >= 0.8 for m in d["classifier_metrics"].values())
+    assert client.get("/api/signals", params={"category": "NOPE"}).status_code == 400
+    texts = {"texts": ["Huge crowd at Deccan, can't move, ping 9876543210"]}
+    assert client.post("/api/signals", json=texts).status_code == 401
+    monkeypatch.setenv("FESTIVALPULSE_ADMIN_TOKEN", "t0ken")
+    before = client.get("/api/signals", params={"zone": "Z03"}).json()["zones"][0]["counts"]["TOO_CROWDED"]
+    r = client.post("/api/signals", json=texts, headers={"X-Admin-Token": "t0ken"}).json()
+    assert r == {"added": 1, "located": 1, "categories": {**dict.fromkeys(r["categories"], 0), "TOO_CROWDED": 1}}
+    from festivalpulse.main import STATE
+    assert "9876543210" not in STATE["signals"][-1]["text"]
+    assert client.get("/api/signals", params={"zone": "Z03"}).json()["zones"][0]["counts"]["TOO_CROWDED"] == before + 1

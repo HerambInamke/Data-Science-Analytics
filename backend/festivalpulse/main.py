@@ -2,18 +2,21 @@
 import csv
 import json
 import io
+import os
+import secrets
 import time
 import uuid
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response
 from fpdf import FPDF
+import pandas as pd
 from pydantic import BaseModel
 
-from . import advisor, engine
+from . import advisor, engine, signals
 from .data import DATA_LABEL, DATASETS, generate, scenario_day
 from .ingest import RAW
 from .models import train
@@ -40,6 +43,8 @@ async def lifespan(_app):
     STATE["weather_real_share"] = round(float(data["weather_real"].mean()), 3)
     STATE["trained_at"] = time.time()
     SCENARIOS["baseline"] = {"name": "Baseline", **_run()}
+    STATE["signal_clf"], STATE["signal_metrics"] = signals.train_classifier()
+    STATE["signals"] = signals.demo_feed(STATE["signal_clf"])
     yield
 
 
@@ -184,6 +189,53 @@ def plan_pdf(plan, name):
     return bytes(pdf.output())
 
 
+def _admin(token):
+    want = os.environ.get("FESTIVALPULSE_ADMIN_TOKEN")
+    if not want or not secrets.compare_digest(token or "", want):
+        raise HTTPException(401, "admin token required (set FESTIVALPULSE_ADMIN_TOKEN, send X-Admin-Token)")
+
+
+@app.get("/api/signals")
+def get_signals(zone: str | None = None, category: str | None = None):
+    """FR-3.4: aggregated counts only (no raw text), compared with predicted peak crowd per zone."""
+    if category and category not in signals.CATEGORIES:
+        raise HTTPException(400, f"unknown category; choose from {signals.CATEGORIES}")
+    rows = [s for s in STATE["signals"] if s["zone_id"] and (not zone or s["zone_id"] == zone)]
+    counts = {z: dict.fromkeys(signals.CATEGORIES, 0) for z in ZONE_BY_ID if not zone or z == zone}
+    for s in rows:
+        counts[s["zone_id"]][s["category"]] += 1
+    peak = SCENARIOS["baseline"]["df"].groupby("zone_id")["crowd_idx"].max()
+    pressure = {z: c["TOO_CROWDED"] + c["TRAFFIC_SLOW"] + c["ROUTE_BLOCKED"] for z, c in counts.items()}
+    rho = None
+    if len(counts) > 2:
+        rho = round(float(peak[list(pressure)].rank().corr(pd.Series(pressure).rank())), 3)
+    return {"data_label": signals.SIGNALS_LABEL, "category": category,
+            "zones": [{"zone_id": z, "name": ZONE_BY_ID[z]["name"], "counts": c,
+                       "total": c[category] if category else sum(c.values()),
+                       "pressure_signals": pressure[z], "predicted_peak_crowd": round(float(peak[z]), 3)}
+                      for z, c in counts.items()],
+            "unlocated": sum(1 for s in STATE["signals"] if not s["zone_id"]),
+            "validation": {"spearman_pressure_vs_predicted_crowd": rho,
+                           "note": "Pressure = TOO_CROWDED + TRAFFIC_SLOW + ROUTE_BLOCKED posts; association only."},
+            "classifier_metrics": STATE["signal_metrics"]}
+
+
+class SignalsIn(BaseModel):
+    texts: list[str]
+
+
+@app.post("/api/signals")
+def upload_signals(body: SignalsIn, x_admin_token: str | None = Header(None)):
+    """FR-3.1 manual upload of permitted public text; PII is masked before storage (FR-3.5)."""
+    _admin(x_admin_token)
+    if len(body.texts) > 1000:
+        raise HTTPException(413, "max 1000 texts per upload")
+    added = signals.ingest(STATE["signal_clf"], body.texts)
+    STATE["signals"].extend(added)
+    return {"added": len(added), "located": sum(1 for a in added if a["zone_id"]),
+            "categories": {c: sum(a["category"] == c for a in added) for c in signals.CATEGORIES}}
+
+
 @app.get("/api/health")
 def health():
     # NFR-5: anything below 1.0 means some days fell back to synthetic weather; the UI shows a badge
@@ -210,6 +262,9 @@ def methodology():
                             "zone-to-zone AQI differences are synthetic.",
                             "Zone boundaries are approximate hexagons around hand-picked centroids.",
                             "Traffic, waste, sanitation and sales are rule-based with assumed coefficients.",
+                            "Social signals are synthetic template posts; the classifier's held-out scores are near "
+                            "perfect only because test posts share the templates. Real accuracy needs >=300 hand-labelled "
+                            "real posts (REQ section 10.5).",
                             "Associations only; no causal claims.", "Advisory only; not an official rating."],
             "sources": ["OpenStreetMap tiles (ODbL), attribution required",
                         "Weather data by Open-Meteo.com (CC BY 4.0), ERA5 reanalysis",
