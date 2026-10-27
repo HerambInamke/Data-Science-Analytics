@@ -1,8 +1,13 @@
+import os
+import tempfile
+
 import pytest
 from fastapi.testclient import TestClient
 
 from festivalpulse import engine
 from festivalpulse.main import app
+
+os.environ["FESTIVALPULSE_DB"] = os.path.join(tempfile.mkdtemp(), "test.db")  # never touch the real DB
 
 
 @pytest.fixture(scope="module")
@@ -160,3 +165,25 @@ def test_admin_settings_recompute(client, monkeypatch):  # REQ §15 screen 8, §
     finally:
         client.put("/api/admin/settings", json={"risk_weights": w0, "action_thresholds": t0}, headers=h)
     assert len(client.get("/api/action-plan").json()["plan"]) == n0
+
+
+def test_state_survives_restart(client, monkeypatch):  # REQ §17 scenarios/signals/settings, FR-8.3 model_runs
+    from festivalpulse import engine
+    monkeypatch.setenv("FESTIVALPULSE_ADMIN_TOKEN", "t0ken")
+    h = {"X-Admin-Token": "t0ken"}
+    sid = client.post("/api/scenarios", json={"name": "Kept", "levers": {"diversion_pct": 40}}).json()["scenario_id"]
+    client.post("/api/signals", json={"texts": ["no dustbin at Camp, garbage everywhere"]}, headers=h)
+    t0 = dict(engine.ACTION_THRESHOLDS)
+    client.put("/api/admin/settings", json={"action_thresholds": {"aqi_pred": 180}}, headers=h)
+    n_signals = client.get("/api/admin/settings", headers=h).json()["signals_stored"]
+    try:
+        engine.ACTION_THRESHOLDS["aqi_pred"] = 200  # simulate a fresh process: in-memory value lost
+        with TestClient(app) as again:
+            s = again.get(f"/api/scenarios/{sid}").json()
+            assert s["name"] == "Kept" and s["levers"]["diversion_pct"] == 40
+            assert again.get("/api/admin/settings", headers=h).json()["signals_stored"] == n_signals
+            assert engine.ACTION_THRESHOLDS["aqi_pred"] == 180
+            runs = again.get("/api/health").json()["model_runs"]
+            assert len(runs) == 2 and runs[0]["data_version"] and runs[0]["commit"]
+    finally:
+        client.put("/api/admin/settings", json={"action_thresholds": t0}, headers=h)

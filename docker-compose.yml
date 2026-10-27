@@ -3,3 +3,11 @@ services:
     build: .
     ports:
       - "8000:8000"
+    environment:
+      - FESTIVALPULSE_ADMIN_TOKEN  # passed through from your shell; admin endpoints return 401 when unset
+      - FESTIVALPULSE_DB=/app/state/festivalpulse.db
+    volumes:
+      - state:/app/state
+
+volumes:
+  state:
