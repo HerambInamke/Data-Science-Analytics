@@ -89,9 +89,9 @@ def train_classifier(n=700, test=300):
     clf = make_pipeline(TfidfVectorizer(ngram_range=(1, 2), min_df=1), LogisticRegression(max_iter=1000))
     clf.fit([mask_pii(p["text"]) for p in tr], [p["category"] for p in tr])
     pred = clf.predict([mask_pii(p["text"]) for p in te])
-    prec, rec, _, sup = precision_recall_fscore_support([p["category"] for p in te], pred, labels=CATEGORIES, zero_division=0)
-    metrics = {c: {"precision": round(float(p), 3), "recall": round(float(r), 3), "n": int(s)}
-               for c, p, r, s in zip(CATEGORIES, prec, rec, sup)}
+    prec, rec, f1, sup = precision_recall_fscore_support([p["category"] for p in te], pred, labels=CATEGORIES, zero_division=0)
+    metrics = {c: {"precision": round(float(p), 3), "recall": round(float(r), 3), "f1": round(float(f), 3), "n": int(s)}
+               for c, p, r, f, s in zip(CATEGORIES, prec, rec, f1, sup)}
     return clf, metrics
 
 

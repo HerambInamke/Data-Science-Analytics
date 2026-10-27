@@ -79,7 +79,16 @@ def train(df, holdout_year=None):
                          "improvement_pct": round(100 * (1 - mae / base), 1),
                          "interval_coverage_80": round(float(np.mean((y >= lo) & (y <= hi))), 3),
                          "interval_margin": round(model.margin, 3),
+                         "rmse": round(float(np.sqrt(np.mean((mid - y) ** 2))), 4), "bias": round(float(np.mean(mid - y)), 4),
                          "holdout_year": int(holdout_year), "baseline": "seasonal-naive (same zone-hour, previous festival)"}
+    # REQ §18.1: AQI also on ordinary days of the holdout year, against a same-hour-yesterday persistence baseline
+    ordinary = df[(df["year"] == holdout_year) & (df["is_festival"] == 0) & df["aqi_prev_day"].notna()]
+    mid = aqi.predict(ordinary)[0]
+    mae, base = mean_absolute_error(ordinary["aqi"], mid), mean_absolute_error(ordinary["aqi"], ordinary["aqi_prev_day"])
+    metrics["aqi"]["ordinary_days"] = {"mae": round(mae, 4), "baseline_mae": round(base, 4),
+                                       "improvement_pct": round(100 * (1 - mae / base), 1),
+                                       "bias": round(float(np.mean(mid - ordinary["aqi"])), 4), "n": len(ordinary),
+                                       "baseline": "persistence (same hour, previous day)"}
     # refit on everything for serving; the lag feature's reference table travels with the model
     crowd_all = QuantileModel(FEATURES_CROWD).fit(df, "crowd_idx")
     crowd_all.history = history_table(df, df["year"].max())

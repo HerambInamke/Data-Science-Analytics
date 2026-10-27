@@ -248,8 +248,8 @@ async function loadSignals() {
       `<tr><td title="${esc(z.name)}">${z.zone_id}</td><td>${z.total}</td><td style="width:40%"><div class="bar" style="width:${100 * z.total / max}%"></div></td><td>${z.predicted_peak_crowd}</td></tr>`).join("")}</table>
     <h3>Validation</h3><p>Spearman ρ, crowd-pressure posts vs predicted peak crowd: <b>${v.spearman_pressure_vs_predicted_crowd}</b></p>
     <p class="muted">${esc(v.note)} ${d.unlocated} posts could not be placed in a zone. Counts only; no raw text is shown.</p>
-    <h3>Classifier (held-out)</h3><table><tr><th>Category</th><th>Precision</th><th>Recall</th><th>n</th></tr>${Object.entries(d.classifier_metrics).map(([k, m]) =>
-      `<tr><td>${k}</td><td>${m.precision}</td><td>${m.recall}</td><td>${m.n}</td></tr>`).join("")}</table>`;
+    <h3>Classifier (held-out)</h3><table><tr><th>Category</th><th>Precision</th><th>Recall</th><th>F1</th><th>n</th></tr>${Object.entries(d.classifier_metrics).map(([k, m]) =>
+      `<tr><td>${k}</td><td>${m.precision}</td><td>${m.recall}</td><td>${m.f1}</td><td>${m.n}</td></tr>`).join("")}</table>`;
 }
 
 const adminHeaders = () => ({ "Content-Type": "application/json", "X-Admin-Token": $("#token").value });

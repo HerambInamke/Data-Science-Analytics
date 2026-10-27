@@ -187,3 +187,10 @@ def test_state_survives_restart(client, monkeypatch):  # REQ §17 scenarios/sign
             assert len(runs) == 2 and runs[0]["data_version"] and runs[0]["commit"]
     finally:
         client.put("/api/admin/settings", json={"action_thresholds": t0}, headers=h)
+
+
+def test_evaluation_report(models):  # REQ §18.1, §23 item 4
+    from festivalpulse import report, signals
+    md = report.render(models[2], signals.train_classifier()[1])
+    assert "NFR-3" in md and "ordinary days" in md and "MEDICAL_HELP_NEEDED" in md
+    assert models[2]["aqi"]["ordinary_days"]["n"] > 0 and "rmse" in models[2]["crowd"]
