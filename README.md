@@ -19,6 +19,9 @@ python -m uvicorn festivalpulse.main:app   # http://localhost:8000
 python -m pytest -q                        # tests
 ```
 
+Browser tests (`tests/test_e2e.py`: timeline, layer toggle, what-if, export) run when Playwright is installed, and are skipped otherwise:
+`pip install playwright && python -m playwright install chromium`.
+
 Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` set on the server and sent as `X-Admin-Token`; without it they return 401. With Docker: `FESTIVALPULSE_ADMIN_TOKEN=... docker compose up` (state is kept in the `state` volume).
 
 ## What's in this version (hackathon mode, REQ §22)
@@ -39,6 +42,8 @@ Admin endpoints (signal upload, Settings tab) need `FESTIVALPULSE_ADMIN_TOKEN` s
 | Admin settings | Risk fusion weights and action thresholds, editable with recompute; data refresh status |
 | Persistence | SQLite (`backend/data/festivalpulse.db`, override with `FESTIVALPULSE_DB`): scenarios, uploaded signals, settings, and a `model_runs` log with data version + commit (FR-8.3) |
 | Map + timeline UI | MapLibre, 06:00 → 05:00 slider, layer toggles, zone panel |
+| End-to-end tests | Playwright: timeline, layer toggle, what-if + share link, CSV/PDF export |
+| Demo | [docs/demo-script.md](docs/demo-script.md), a 4-minute walkthrough |
 
 Not yet: PostgreSQL/PostGIS (SQLite is single-process), real crowd labels, real social text / RSS ingest, LLM advisor, road-segment traffic.
 
@@ -46,9 +51,9 @@ Not yet: PostgreSQL/PostGIS (SQLite is single-process), real crowd labels, real 
 
 ```
 backend/festivalpulse/  zones.py  ingest.py  data.py  models.py  engine.py  advisor.py  signals.py  store.py  main.py
-backend/tests/          scenario sanity checks, model-vs-baseline, API and advisor tests
+backend/tests/          scenario sanity checks, model-vs-baseline, API and advisor tests, Playwright e2e
 frontend/index.html     single-page map UI served at /
-docs/                   evaluation.md (generated: python -m festivalpulse.report), model-cards.md, data-dictionary.md
+docs/                   evaluation.md (generated: python -m festivalpulse.report), model-cards.md, data-dictionary.md, demo-script.md
 ```
 
 ## API
